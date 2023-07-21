@@ -10,7 +10,8 @@ class DockerRunner : IRunner
         var typedTask = new DockerTask(task);
         var env = string.Join(" ", task.Environment.Select(pair => $"--env {pair.Key}={pair.Value}"));
         var ports = typedTask.Ports is not null ? string.Join(" ", typedTask.Ports.Select(p => $"-p {p}")) : "";
-        RunRequiredCommand("docker", $"run -d --name things-{service}-{task.Name} {env} {ports} {typedTask.Image}");
+        var opts = typedTask.Opts is not null ? string.Join(" ", typedTask.Opts) : "";
+        RunRequiredCommand("docker", $"run -d --name things-{service}-{task.Name} {env} {ports} {opts} {typedTask.Image}");
     }
 
     public void Stop(TaskConfig task, string service)
@@ -53,4 +54,5 @@ class DockerTask : TaskConfig
 
     public string Image => this["image"].GetString() ?? throw new Exception($"Docker tasks must specify an 'image'");
     public IList<string> Ports => (this.ContainsKey("ports") ? this["ports"].Deserialize<IList<string>>() : null) ?? new string[] { };
+    public IList<string> Opts => (this.ContainsKey("opts") ? this["opts"].Deserialize<IList<string>>() : null) ?? new string[] { };
 }
