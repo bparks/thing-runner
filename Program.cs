@@ -1,6 +1,11 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using ThingRunner;
+using ThingRunner.Models;
+using ThingRunner.RestServer;
 using ThingRunner.Runners;
 
 JsonSerializerOptions DefaultSerializationOptions = new JsonSerializerOptions(JsonSerializerOptions.Default)
@@ -8,19 +13,9 @@ JsonSerializerOptions DefaultSerializationOptions = new JsonSerializerOptions(Js
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
 };
 
-#if DEBUG
-string CONFIG_DIR = Path.Combine(Environment.CurrentDirectory, "etc");
-#else
-string CONFIG_DIR = Environment.GetEnvironmentVariable("CONFIG_DIR");
-if (string.IsNullOrWhiteSpace(CONFIG_DIR))
+if (!Directory.Exists(Constants.CONFIG_DIR))
 {
-    CONFIG_DIR = "/etc/things";
-}
-#endif
-
-if (!Directory.Exists(CONFIG_DIR))
-{
-    Console.Error.WriteLine($"Configuration directory {CONFIG_DIR} does not exist");
+    Console.Error.WriteLine($"Configuration directory {Constants.CONFIG_DIR} does not exist");
     Environment.ExitCode = 1;
     return;
 }
@@ -65,6 +60,9 @@ switch (command)
     case "list":
         RunListCommand();
         break;
+    case "serve":
+        RunServeCommand();
+        break;
     case "start":
         RunStartCommand(serviceName!);
         break;
@@ -73,6 +71,9 @@ switch (command)
         break;
     case "update":
         RunUpdateCommand(serviceName!);
+        break;
+    case "token":
+        RunTokenCommand(serviceName, fullArgs);
         break;
     default:
         Console.Error.WriteLine($"Unrecognized command {command}");
@@ -104,10 +105,11 @@ string HowWasIRun()
 
 bool DoesCommandRequireService(string command)
 {
-    // For right now, everything except "list" does
     switch (command)
     {
         case "list":
+        case "serve":
+        case "token":
             return false;
         default:
             return true;
@@ -128,13 +130,13 @@ IRunner GetRunnerOfType(string runnerType)
 ServiceConfig GetServiceConfig(string service)
 {
     string thing = service + ".json";
-    if (!File.Exists(Path.Combine(CONFIG_DIR, thing)))
+    if (!File.Exists(Path.Combine(Constants.CONFIG_DIR, thing)))
     {
         throw new Exception($"Service {service} is not defined");
     }
     try
     {
-        var stream = File.OpenRead(Path.Combine(CONFIG_DIR, thing));
+        var stream = File.OpenRead(Path.Combine(Constants.CONFIG_DIR, thing));
         var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, DefaultSerializationOptions);
         return cfg!;
     }
@@ -151,14 +153,14 @@ ServiceConfig GetServiceConfig(string service)
 
 void RunListCommand()
 {
-    var things = Directory.EnumerateFiles(CONFIG_DIR).Where(f => f.EndsWith(".json"));
+    var things = Directory.EnumerateFiles(Constants.CONFIG_DIR).Where(f => f.EndsWith(".json"));
     foreach (var thing in things)
     {
         Console.Write(Path.GetFileNameWithoutExtension(thing));
         Console.Write(" ");
         try
         {
-            var stream = File.OpenRead(Path.Combine(CONFIG_DIR, thing));
+            var stream = File.OpenRead(Path.Combine(Constants.CONFIG_DIR, thing));
             var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, DefaultSerializationOptions);
             Console.Write(cfg!.Disabled ? "[disabled]" : "");
         }
@@ -201,6 +203,80 @@ void RunUpdateCommand(string service)
         GetRunnerOfType(task.Type).Update(task, service);
         Console.WriteLine("DONE");
     }
+}
+
+void RunServeCommand()
+{
+    new Server().Run(new string[] { });
+}
+
+void RunTokenCommand(string? subcommand, IList<string> fullArgs)
+{
+    string tokenUsage = "USAGE: things token {new|revoke} <token-name>";
+
+    if (subcommand is null)
+    {
+        Console.Error.WriteLine("Command \"token\" requires a subcommand: new, revoke");
+        Console.Error.WriteLine(tokenUsage);
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    if (fullArgs.Count < 3)
+    {
+        Console.Error.WriteLine("A token name is required");
+        Console.Error.WriteLine(tokenUsage);
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    switch (subcommand)
+    {
+        case "new":
+            RunAddTokenCommand(fullArgs[2]);
+            break;
+        case "revoke":
+            RunRevokeTokenCommand(fullArgs[2]);
+            break;
+        default:
+            Console.Error.WriteLine($"Unknown subcommand: {subcommand}");
+            Console.Error.WriteLine(tokenUsage);
+            Environment.ExitCode = 1;
+            return;
+    }
+}
+
+void RunAddTokenCommand(string name)
+{
+    string token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+    string hashedToken = Convert.ToBase64String(SHA512.Create().ComputeHash(Encoding.UTF8.GetBytes(token)));
+
+    // Save the *hash* to the database
+    var db = ThingsDbContext.WithFile(Constants.DB_FILE);
+    db.Tokens.Add(new Token
+    {
+        TokenValue = hashedToken,
+        Name = name,
+        CreatedAt = DateTime.UtcNow,
+    });
+    db.SaveChanges();
+
+    // Write some output
+    Console.WriteLine($"{name}: {token}");
+    Console.WriteLine("This is your token. Save it right away; it cannot be recovered.");
+}
+
+void RunRevokeTokenCommand(string name)
+{
+    var db = ThingsDbContext.WithFile(Constants.DB_FILE);
+    var token = db.Tokens.FirstOrDefault(t => t.Name == name && t.RevokedAt == null);
+    if (token is not null)
+    {
+        token.RevokedAt = DateTime.UtcNow;
+        db.SaveChanges();
+    }
+
+    Console.WriteLine($"Token {name} has been revoked");
 }
 
 #endregion
