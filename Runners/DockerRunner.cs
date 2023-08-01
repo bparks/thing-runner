@@ -44,12 +44,9 @@ class DockerRunner : IRunner
 
 class DockerTask : TaskConfig
 {
-    public DockerTask(TaskConfig anyTask)
+    public DockerTask(TaskConfig anyTask) : base(anyTask)
     {
-        foreach (var pair in anyTask)
-        {
-            Add(pair.Key, pair.Value.Clone());
-        }
+        //
     }
 
     public string Image => this["image"].GetString() ?? throw new Exception($"Docker tasks must specify an 'image'");

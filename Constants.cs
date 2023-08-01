@@ -12,6 +12,10 @@ public static class Constants
 
     public static readonly string DB_FILE = Path.Combine(CONFIG_DIR, DB_NAME);
 
+    public static readonly string RUN_DIR = OperatingSystem.IsWindows() ?
+        Path.GetTempPath() :
+        "/var/run";
+
     private static string SetConfigDir()
     {
         string? configDir = Environment.GetEnvironmentVariable("CONFIG_DIR");

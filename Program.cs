@@ -75,6 +75,9 @@ switch (command)
     case "token":
         RunTokenCommand(serviceName, fullArgs);
         break;
+    case "install-server":
+        RunInstallServerCommand();
+        break;
     default:
         Console.Error.WriteLine($"Unrecognized command {command}");
         Environment.ExitCode = 1;
@@ -110,6 +113,7 @@ bool DoesCommandRequireService(string command)
         case "list":
         case "serve":
         case "token":
+        case "install-server":
             return false;
         default:
             return true;
@@ -122,6 +126,8 @@ IRunner GetRunnerOfType(string runnerType)
     {
         case "docker":
             return new DockerRunner();
+        case "script":
+            return new ScriptRunner();
         default:
             throw new Exception($"Unknown task type {runnerType}");
     }
@@ -199,7 +205,7 @@ void RunUpdateCommand(string service)
     var cfg = GetServiceConfig(service);
     foreach (var task in cfg!.Tasks)
     {
-        Console.Write($"Stopping {task.Name ?? task.Type}... ");
+        Console.Write($"Updating {task.Name ?? task.Type}... ");
         GetRunnerOfType(task.Type).Update(task, service);
         Console.WriteLine("DONE");
     }
@@ -279,6 +285,29 @@ void RunRevokeTokenCommand(string name)
     Console.WriteLine($"Token {name} has been revoked");
 }
 
+void RunInstallServerCommand()
+{
+    string servicePath = Path.Combine(Constants.CONFIG_DIR, "things-server.json");
+    using var streamWriter = File.CreateText(servicePath);
+    streamWriter.WriteLine(@$"{{
+        ""name"": ""Things REST Server"",
+        ""description"": ""A REST server that allows control of services defined using ThingRunner (things)"",
+        ""disabled"": false,
+        ""tasks"": [
+            {{
+                ""name"": ""web-server"",
+                ""type"": ""script"",
+                ""start-command"": ""{Environment.ProcessPath} serve"",
+                ""runas"": """",
+                ""daemonize"": true
+            }}
+        ]
+    }}");
+
+    Console.WriteLine("Things Server has been installed. Start it by running");
+    Console.WriteLine("    things start things-server");
+}
+
 #endregion
 
 #region Models
@@ -293,6 +322,19 @@ public class ServiceConfig
 
 public class TaskConfig : Dictionary<string, JsonElement>
 {
+    public TaskConfig()
+    {
+        //
+    }
+
+    public TaskConfig(TaskConfig anyTask)
+    {
+        foreach (var pair in anyTask)
+        {
+            Add(pair.Key, pair.Value.Clone());
+        }
+    }
+
     public string Name => this["name"].GetString() ?? "";
     public string Type => this["type"].GetString() ?? "";
     public Dictionary<string, string> Environment => this["env"].Deserialize<Dictionary<string, string>>() ?? new();
