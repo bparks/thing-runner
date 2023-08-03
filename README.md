@@ -83,8 +83,26 @@ things install-server
 things start things-server
 ```
 
+The server will run on port 2080 by default.
+
 NOTE: Currently, this installs and runs as root, which is less than desirable.
 This is at the top of the list to figure out.
+
+In order to successfully send requests to the REST server, you need to
+create a token.
+
+```
+things token new <NameOfToken>
+```
+
+Save the output somewhere. When sending a request, add an `Authorization` header
+with the value `token <your-token>`.
+
+Valid requests (currently) are only `/services/{service}/update`, which
+is the same as running `things update <service>`.
+
+If you build the app in Debug mode, an OpenAPI/Swagger UI is available at
+`/swagger`.
 
 ## Configure
 

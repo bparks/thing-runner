@@ -299,7 +299,10 @@ void RunInstallServerCommand()
                 ""type"": ""script"",
                 ""start-command"": ""{Environment.ProcessPath} serve"",
                 ""runas"": """",
-                ""daemonize"": true
+                ""daemonize"": true,
+                ""env"": {{
+                    ""ASPNETCORE_URLS"": ""http://+:2080""
+                }}
             }}
         ]
     }}");

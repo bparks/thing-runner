@@ -14,8 +14,12 @@ class ScriptRunner : IRunner
             Arguments = commandLine[1].Trim(),
             RedirectStandardError = true,
             RedirectStandardInput = true,
-            RedirectStandardOutput = true,
+            RedirectStandardOutput = true
         };
+        foreach (var kvp in task.Environment)
+        {
+            start.Environment.Add(kvp);
+        }
         Process? process = Process.Start(start);
         if (typedTask.Daemonize)
         {
