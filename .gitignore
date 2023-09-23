@@ -480,3 +480,5 @@ $RECYCLE.BIN/
 # App-specific items
 etc
 !etc/.empty
+
+.idea

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ThingRunner;
 
 public static class Constants
@@ -25,4 +27,10 @@ public static class Constants
         }
         return configDir!;
     }
+    
+    public static readonly JsonSerializerOptions DefaultSerializationOptions = new JsonSerializerOptions(JsonSerializerOptions.Default)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+    };
 }

@@ -25,17 +25,19 @@ class DockerRunner : IRunner
         var typedTask = new DockerTask(task);
 
         RunRequiredCommand("docker", $"pull {typedTask.Image}");
-        Stop(task, service);
-        RunRequiredCommand("docker", $"rm things-{service}-{task.Name}");
+        RunOptionalCommand("docker", $"stop things-{service}-{task.Name}");
+        RunOptionalCommand("docker", $"rm things-{service}-{task.Name}");
         Start(task, service);
     }
 
-    private void RunRequiredCommand(string exe, string args)
+    private void RunRequiredCommand(string exe, string args) => RunCommand(exe, args, true);
+    private void RunOptionalCommand(string exe, string args) => RunCommand(exe, args, false);
+    private void RunCommand(string exe, string args, bool requireSuccess)
     {
         var process = Process.Start(exe, args);
         process.WaitForExit();
         Environment.ExitCode = process.ExitCode;
-        if (process.ExitCode != 0)
+        if (process.ExitCode != 0 && requireSuccess)
         {
             throw new Exception($"Command failed: {exe} {args}");
         }

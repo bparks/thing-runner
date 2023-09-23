@@ -8,11 +8,6 @@ using ThingRunner.Models;
 using ThingRunner.RestServer;
 using ThingRunner.Runners;
 
-JsonSerializerOptions DefaultSerializationOptions = new JsonSerializerOptions(JsonSerializerOptions.Default)
-{
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-};
-
 if (!Directory.Exists(Constants.CONFIG_DIR))
 {
     Console.Error.WriteLine($"Configuration directory {Constants.CONFIG_DIR} does not exist");
@@ -39,14 +34,14 @@ else
     // Inject that service after the first argument, which is the command
     fullArgs = new List<string>
     {
-        args[0],
+        args.Length > 0 ? args[0] : "",
         service
     };
     fullArgs.AddRange(args.Skip(1));
 }
 
-string command = fullArgs[0];
-string? serviceName = fullArgs.Count() > 1 ? fullArgs[1] : null;
+string command = fullArgs.Any() ? fullArgs[0] : "";
+string? serviceName = fullArgs.Count > 1 ? fullArgs[1] : null;
 
 if (DoesCommandRequireService(command) && string.IsNullOrWhiteSpace(serviceName))
 {
@@ -72,12 +67,19 @@ switch (command)
     case "update":
         RunUpdateCommand(serviceName!);
         break;
+    case "install":
+        RunInstallCommand(serviceName);
+        break;
     case "token":
         RunTokenCommand(serviceName, fullArgs);
         break;
     case "install-server":
         RunInstallServerCommand();
         break;
+    case "":
+        Console.Error.WriteLine("No command was specified");
+        Environment.ExitCode = 1;
+        return;
     default:
         Console.Error.WriteLine($"Unrecognized command {command}");
         Environment.ExitCode = 1;
@@ -114,6 +116,7 @@ bool DoesCommandRequireService(string command)
         case "serve":
         case "token":
         case "install-server":
+        case "":
             return false;
         default:
             return true;
@@ -143,12 +146,27 @@ ServiceConfig GetServiceConfig(string service)
     try
     {
         var stream = File.OpenRead(Path.Combine(Constants.CONFIG_DIR, thing));
-        var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, DefaultSerializationOptions);
+        var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, Constants.DefaultSerializationOptions);
         return cfg!;
     }
     catch (Exception e)
     {
         Console.Error.Write($"Service {service} has an invalid definition: {e.Message}");
+        throw;
+    }
+}
+
+void WriteServiceConfig(string service, ServiceConfig cfg)
+{
+    string thing = service + ".json";
+    try
+    {
+        using var stream = File.OpenWrite(Path.Combine(Constants.CONFIG_DIR, thing));
+        JsonSerializer.Serialize(stream, cfg, Constants.DefaultSerializationOptions);
+    }
+    catch (Exception e)
+    {
+        Console.Error.Write($"Unable to install service {service}: {e.Message}");
         throw;
     }
 }
@@ -167,7 +185,7 @@ void RunListCommand()
         try
         {
             var stream = File.OpenRead(Path.Combine(Constants.CONFIG_DIR, thing));
-            var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, DefaultSerializationOptions);
+            var cfg = JsonSerializer.Deserialize<ServiceConfig>(stream, Constants.DefaultSerializationOptions);
             Console.Write(cfg!.Disabled ? "[disabled]" : "");
         }
         catch (JsonException)
@@ -209,6 +227,13 @@ void RunUpdateCommand(string service)
         GetRunnerOfType(task.Type).Update(task, service);
         Console.WriteLine("DONE");
     }
+}
+
+void RunInstallCommand(string service)
+{
+    var cfg = JsonSerializer.Deserialize<ServiceConfig>(Console.In.ReadToEnd(), Constants.DefaultSerializationOptions);
+    WriteServiceConfig(service, cfg);
+    Console.WriteLine($"Successfully installed service {service}");
 }
 
 void RunServeCommand()
